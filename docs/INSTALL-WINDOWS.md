@@ -1,0 +1,16 @@
+# Installation — Windows 10/11 with Docker Desktop
+
+1. Install Docker Desktop with **Linux containers** and start its engine. Run `docker compose version` and `docker info --format '{{.OSType}}'` (expected: `linux`). Ensure the D: drive is accessible to Docker Desktop.
+2. Clone or extract this repository to `D:\Docker\home-media-stack`. In PowerShell run `cd D:\Docker\home-media-stack`.
+3. Run `powershell -ExecutionPolicy Bypass -File .\scripts\initialize.ps1 -Root 'D:\Docker'` (or execute the script's commands directly). For another root set `MEDIA_ROOT` accordingly, using forward slashes in `.env`.
+4. Run `Copy-Item .env.example .env`. Edit `.env` with your root path, domain and **paid Proton WireGuard private key**. Obtain the key from your Proton account; generate a P2P/NAT-PMP-capable configuration. Never share the `.conf` or private key.
+5. Run `docker compose config -q` then `docker compose up -d gluetun qbittorrent radarr sonarr lidarr prowlarr bazarr jellyfin seerr`.
+6. Check `docker compose ps` and `docker compose logs --tail=80 gluetun`. **Verify the VPN exit IP and kill switch before enabling transfers.** `docker compose exec gluetun cat /gluetun/forwarded_port` shows Proton's dynamic port if forwarding works. Match qBittorrent's listening port to it. The provided hook attempts automatic updates, but must be verified; qBittorrent may require localhost auth bypass only within its shared network and correct WebUI authentication.
+7. Open local apps: Jellyfin `http://localhost:8096`, Seerr `http://localhost:5055`, qBittorrent `http://localhost:8081`, Radarr `7878`, Sonarr `8989`, Lidarr `8686`, Prowlarr `9696`, Bazarr `6767`.
+8. Configure qBittorrent WebUI to port `8081`, with a strong password. Its initial temporary password may appear in `docker compose logs qbittorrent`. Create categories `radarr`, `sonarr`, `lidarr` using `/data/torrents/movies`, `/data/torrents/tv`, `/data/torrents/music`.
+9. In each ARR app choose qBittorrent downloader at **`gluetun:8081`**, not localhost, with matching category and credentials; verify tests. In each ARR app use roots `/data/media/movies`, `/data/media/tv`, `/data/media/music`. Enable completed download handling. Configure indexers in Prowlarr and connect apps using service hostnames.
+10. Set Jellyfin libraries `/data/media/movies`, `/data/media/tv`, `/data/media/music`. In Seerr, add Jellyfin (`http://jellyfin:8096`), Radarr (`http://radarr:7878`), Sonarr (`http://sonarr:8989`). For Bazarr, configure Radarr and Sonarr at their internal service names; use `/data/media` paths.
+11. **Only after local authentication is set up:** Configure DNS and router using [REMOTE-ACCESS.md](REMOTE-ACCESS.md), then `docker compose up -d caddy`. Do not publish the admin apps through Caddy.
+12. Optional: `docker compose --profile extras up -d ombi flaresolverr`. Use the optional roles profile only after setting its secrets and reading [ROLE-MANAGER.md](ROLE-MANAGER.md).
+
+This Compose is designed for a **fresh installation**. Do not replace an existing production Compose file wholesale: service project names, mount paths and named volumes can differ and create apparent data loss. Back up existing volumes and merge changes instead.

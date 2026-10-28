@@ -1,0 +1,9 @@
+media.{$DOMAIN} {
+    encode zstd gzip
+    reverse_proxy jellyfin:8096
+}
+
+requests.{$DOMAIN} {
+    encode zstd gzip
+    reverse_proxy seerr:5055
+}

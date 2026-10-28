@@ -1,0 +1,23 @@
+# Insert this service under services: in D:\Docker\arr-stack\docker-compose.yml
+  seerr-roles:
+    build:
+      context: D:/Docker/seerr-roles
+    container_name: arr-seerr-roles
+    restart: unless-stopped
+    environment:
+      SEERR_URL: http://seerr:5055
+      SEERR_API_KEY: ${SEERR_API_KEY:?Set SEERR_API_KEY in .env}
+      ROLE_MANAGER_PASSWORD: ${ROLE_MANAGER_PASSWORD:?Set ROLE_MANAGER_PASSWORD in .env}
+      SESSION_SECRET: ${ROLE_MANAGER_SESSION_SECRET:?Set ROLE_MANAGER_SESSION_SECRET in .env}
+      DATABASE_PATH: /data/roles.sqlite
+      SYNC_INTERVAL_SECONDS: "600"
+    volumes:
+      - seerr_roles_data:/data
+    ports:
+      - "127.0.0.1:5060:3000"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+# Also add under top-level volumes:
+#   seerr_roles_data:

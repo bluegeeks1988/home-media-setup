@@ -1,0 +1,166 @@
+name: home-media
+
+x-lsio: &lsio
+  PUID: "${PUID:-1000}"
+  PGID: "${PGID:-1000}"
+  TZ: "${TZ:-Europe/London}"
+
+services:
+  gluetun:
+    image: qmcgaw/gluetun:latest
+    cap_add: [NET_ADMIN]
+    devices: ["/dev/net/tun:/dev/net/tun"]
+    restart: unless-stopped
+    environment:
+      VPN_SERVICE_PROVIDER: protonvpn
+      VPN_TYPE: wireguard
+      WIREGUARD_PRIVATE_KEY: "${PROTON_WIREGUARD_PRIVATE_KEY:?Configure Proton WireGuard key in .env}"
+      SERVER_COUNTRIES: "${VPN_COUNTRY:-United Kingdom}"
+      PORT_FORWARD_ONLY: "on"
+      VPN_PORT_FORWARDING: "on"
+      VPN_PORT_FORWARDING_STATUS_FILE: /gluetun/forwarded_port
+      VPN_PORT_FORWARDING_UP_COMMAND: >-
+        /bin/sh -c 'wget -O- -nv --retry-connrefused --post-data "json={\"listen_port\":{{PORT}},\"current_network_interface\":\"{{VPN_INTERFACE}}\",\"random_port\":false,\"upnp\":false}" http://127.0.0.1:8081/api/v2/app/setPreferences'
+    volumes:
+      - "${MEDIA_ROOT}/appdata/gluetun:/gluetun"
+    ports:
+      - "127.0.0.1:8081:8081"
+
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    restart: unless-stopped
+    network_mode: "service:gluetun"
+    depends_on:
+      gluetun:
+        condition: service_healthy
+    environment:
+      <<: *lsio
+      WEBUI_PORT: "8081"
+    volumes:
+      - "${MEDIA_ROOT}/appdata/qbittorrent:/config"
+      - "${MEDIA_ROOT}/data:/data"
+
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    restart: unless-stopped
+    environment: *lsio
+    ports: ["127.0.0.1:7878:7878"]
+    volumes:
+      - "${MEDIA_ROOT}/appdata/radarr:/config"
+      - "${MEDIA_ROOT}/data:/data"
+
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:latest
+    restart: unless-stopped
+    environment: *lsio
+    ports: ["127.0.0.1:8989:8989"]
+    volumes:
+      - "${MEDIA_ROOT}/appdata/sonarr:/config"
+      - "${MEDIA_ROOT}/data:/data"
+
+  lidarr:
+    image: lscr.io/linuxserver/lidarr:latest
+    restart: unless-stopped
+    environment: *lsio
+    ports: ["127.0.0.1:8686:8686"]
+    volumes:
+      - "${MEDIA_ROOT}/appdata/lidarr:/config"
+      - "${MEDIA_ROOT}/data:/data"
+
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    restart: unless-stopped
+    environment: *lsio
+    ports: ["127.0.0.1:9696:9696"]
+    volumes:
+      - "${MEDIA_ROOT}/appdata/prowlarr:/config"
+
+  bazarr:
+    image: lscr.io/linuxserver/bazarr:latest
+    restart: unless-stopped
+    environment: *lsio
+    ports: ["127.0.0.1:6767:6767"]
+    volumes:
+      - "${MEDIA_ROOT}/appdata/bazarr:/config"
+      - "${MEDIA_ROOT}/data/media:/data/media"
+
+  jellyfin:
+    image: lscr.io/linuxserver/jellyfin:latest
+    restart: unless-stopped
+    environment: *lsio
+    ports: ["127.0.0.1:8096:8096"]
+    volumes:
+      - "${MEDIA_ROOT}/appdata/jellyfin:/config"
+      - "${MEDIA_ROOT}/data/media:/data/media:ro"
+
+  seerr:
+    image: ghcr.io/seerr-team/seerr:latest
+    init: true
+    restart: unless-stopped
+    environment:
+      TZ: "${TZ:-Europe/London}"
+      PORT: "5055"
+      LOG_LEVEL: info
+    ports: ["127.0.0.1:5055:5055"]
+    volumes:
+      - seerr_config:/app/config
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:5055/api/v1/settings/public || exit 1"]
+      start_period: 20s
+      interval: 15s
+      retries: 3
+      timeout: 3s
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      DOMAIN: "${DOMAIN:?Set your domain in .env}"
+    volumes:
+      - "./caddy/Caddyfile:/etc/caddy/Caddyfile:ro"
+      - caddy_data:/data
+      - caddy_config:/config
+
+  ombi:
+    image: lscr.io/linuxserver/ombi:latest
+    profiles: [extras]
+    restart: unless-stopped
+    environment: *lsio
+    ports: ["127.0.0.1:3579:3579"]
+    volumes:
+      - "${MEDIA_ROOT}/appdata/ombi:/config"
+
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    profiles: [extras]
+    restart: unless-stopped
+    environment:
+      TZ: "${TZ:-Europe/London}"
+      LOG_LEVEL: info
+      LOG_HTML: "false"
+    ports: ["127.0.0.1:8191:8191"]
+
+  seerr-roles:
+    build: ./role-manager
+    profiles: [roles]
+    restart: unless-stopped
+    environment:
+      SEERR_URL: http://seerr:5055
+      SEERR_API_KEY: "${SEERR_API_KEY:?Set Seerr API key in .env}"
+      ROLE_MANAGER_PASSWORD: "${ROLE_MANAGER_PASSWORD:?Set role manager password in .env}"
+      SESSION_SECRET: "${ROLE_MANAGER_SESSION_SECRET:?Set session secret in .env}"
+      DATABASE_PATH: /data/roles.sqlite
+    ports: ["127.0.0.1:5070:3000"]
+    volumes:
+      - seerr_roles_data:/data
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+
+volumes:
+  caddy_data:
+  caddy_config:
+  seerr_config:
+  seerr_roles_data:
